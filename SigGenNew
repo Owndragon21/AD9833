@@ -28,7 +28,6 @@ bool wroteLSB_FREQ1 = false;
 bool isUART = false;
 
 
-
 static uint8_t prevNextCode = 0; //for encoder
 static uint16_t store=0; //for encoder
 
@@ -156,7 +155,7 @@ void printShape(){
 }
 
 void display_LCD(){ //(col,row)
-  if (mode == Mode::STEP || mode == Mode::SHAPE) //we need this
+  if (mode == Mode::STEP || mode == Mode::SHAPE || isUART) //we need this
     lcd.clear();
   ///////////////////////////////
   lcd.setCursor(0,0); //PRINT FREQ
@@ -230,14 +229,14 @@ void adjust_temp(){ // CORE FUNCTION [WIP]
           if (temp <= 5000000) //5 MHz limit
             freq+=step; //increase the frequency by given step
           else
-            freq = 5000000;
+            freq = 5000000; //or set it to max
       }
       else if (dir == rotationDirection::LEFT){ //left
           temp = freq - step;
           if (temp >= 0) //sanity
             freq-=step; //decrease the frequency by given step
           else
-            freq = 0;
+            freq = 0; //or set it to min
       }
     }
   ////// NEXT MODE //////
@@ -324,6 +323,7 @@ void checkUART(/*bool& change*/){
     switch (command & 0xC000){
       case 0x0000:
         Serial.println("Control word write.");
+        wroteLSB_FREQ0 = false;
         //lets decode the waveform
         if ((command & 0x0800 != 0)){
           Serial.println("Changing FSELECT is not allowed!"); //ABORT
@@ -343,26 +343,29 @@ void checkUART(/*bool& change*/){
             waveform = SINE;
           }
         }
+        isUART = true;
         write_register(command);
         display_LCD();
         break;
       case 0x4000: //NOTE: We need to ensure that proper frequency register is selected for phase accumulation
-        Serial.println("FREQ0 REG write.");
+        //Serial.println("FREQ0 REG write.");
         if(!wroteLSB_FREQ0){
           LSB = command;
           wroteLSB_FREQ0 = true;
         } else { 
           MSB = command;
-          change = true;
           write_register(LSB);
           write_register(MSB);
           decodeFreq_UART(LSB,MSB);
           wroteLSB_FREQ0 = false;
+          //isUART = true;
+          Serial.println("FREQ0 REG write.");
           display_LCD();
         }
         break;
       case 0x8000: //NOTE: We need to ensure that proper frequency register is selected for phase accumulation
         Serial.println("FREQ1 REG write.");
+        wroteLSB_FREQ0 = false;
         /* NOT SUPPORTED
         if(!wroteLSB_FREQ1){
           LSB = command;
@@ -376,12 +379,14 @@ void checkUART(/*bool& change*/){
         */
         break;
       case 0xC000: // NOT SUPPORTED
+        wroteLSB_FREQ0 = false;
         Serial.println("Phase reg write.");
         break;
       break;
     }
   }
   //display_LCD(); //at the end, update the LCD.
+  isUART = false;
 }
 
 void setup(){ 
